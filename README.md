@@ -5,7 +5,7 @@ An end-to-end SQL project on the Kaggle [Home Credit Default Risk](https://www.k
 
 Stack: DuckDB (SQL, runs locally), Python (builds the dashboard only), Plotly.
 
-![Dashboard](Docs:Dashboard.png)
+![Dashboard](https://raw.githubusercontent.com/arpitmhptr-collab/home-credit-default-risk-sql/main/Docs/Dashboard.png)
 
 ## Headline findings
 
