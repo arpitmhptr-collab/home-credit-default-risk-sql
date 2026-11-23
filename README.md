@@ -1,5 +1,6 @@
 # Home Credit Default Risk: SQL analysis on 7 messy tables
 Dashboard Link: https://arpitmhptr-collab.github.io/home-credit-default-risk-sql/
+
 An end-to-end SQL project on the Kaggle [Home Credit Default Risk](https://www.kaggle.com/competitions/home-credit-default-risk) data. It joins 7 related tables (about 13.6M instalment rows and 27.3M bureau-balance rows) into one customer-level mart, runs data-quality checks and reconciliations at every step, and asks which behaviours go with default.
 
 Stack: DuckDB (SQL, runs locally), Python (builds the dashboard only), Plotly.
