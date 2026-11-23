@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Home Credit: what predicts default?</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;  --surface: #fcfcfb;
+    --ink: #0b0b0b;  --ink2: #52514e;  --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7;  --ring: rgba(11,11,11,0.10);
+    --accent: #2a78d6;  /* series blue */
+    --below: #a9a8a1;   /* de-emphasis gray */
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page: #0d0d0d;  --surface: #1a1a19;
+      --ink: #f0efec;  --ink2: #c3c2b7;  --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835;  --ring: rgba(255,255,255,0.10);
+      --accent: #3987e5;
+      --below: #5f5e5a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink);
+         font-family: system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.45; }
+  main { max-width: 1120px; margin: 0 auto; padding: 32px 20px 56px; }
+  h1 { font-size: 28px; font-weight: 650; margin: 0 0 4px; }
+  h2 { font-size: 18px; font-weight: 650; margin: 40px 0 4px; }
+  .sub { color: var(--ink2); margin: 0 0 20px; max-width: 70ch; }
+  .card { background: var(--surface); border: 1px solid var(--ring); border-radius: 12px; padding: 18px 20px; }
+  .hero { display: flex; gap: 24px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+  .hero-fig { font-size: 64px; font-weight: 650; line-height: 1; color: var(--ink); }
+  .hero p { margin: 0; color: var(--ink2); max-width: 62ch; font-size: 16px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+  .tile .label { color: var(--ink2); font-size: 13px; }
+  .tile .value { font-size: 28px; font-weight: 650; margin: 2px 0; }
+  .tile .note { color: var(--ink2); font-size: 13px; }
+  .key { display: flex; gap: 18px; flex-wrap: wrap; color: var(--ink2); font-size: 13px; margin: 0 0 12px; align-items: center; }
+  .key i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+  .key b { display: inline-block; width: 18px; height: 0; border-top: 2px solid var(--ink2); margin-right: 6px; vertical-align: 3px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 12px; }
+  @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } .hero-fig { font-size: 52px; } }
+  .chart h3 { font-size: 16px; margin: 0; }
+  .chart p { margin: 2px 0 6px; color: var(--ink2); font-size: 13px; }
+  details { margin-top: 6px; }
+  summary { cursor: pointer; color: var(--ink2); font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 6px; }
+  th, td { text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--ink2); font-weight: 600; }
+  footer { margin-top: 36px; color: var(--ink2); font-size: 13px; max-width: 80ch; }
+</style>
+</head>
+<body>
+<main>
+  <h1>What predicts default?</h1>
+  <p class="sub" id="subtitle"></p>
+
+  <section class="card hero" id="hero"></section>
+  <section class="tiles" id="tiles"></section>
+
+  <h2>Default rate by behaviour</h2>
+  <p class="sub">Each bar is the share of customers in that band who defaulted. Bars above the portfolio baseline are highlighted.</p>
+  <p class="key">
+    <span><i style="background: var(--accent)"></i>Above portfolio baseline</span>
+    <span><i style="background: var(--below)"></i>At or below baseline</span>
+    <span><b></b>Portfolio baseline</span>
+  </p>
+  <section class="grid" id="charts"></section>
+
+  <h2>Data quality findings handled before analysis</h2>
+  <p class="sub">Each issue was found during profiling and fixed before any join, with row counts and sums reconciled afterwards.</p>
+  <section class="tiles" id="dq"></section>
+
+  <footer>
+    Source: Home Credit Default Risk (Kaggle), 307,511 training customers. Default means TARGET = 1.
+    Behaviour features come from previous loans, bureau records and card history. Rates show association with default, not cause.
+    Built with DuckDB (SQL) and Plotly.
+  </footer>
+</main>
+
+<script>
+const DATA = {"bands": [{"driver": "bureau_dpd", "band": "0 no bureau record", "customers": 44020, "defaulters": 4457, "default_pct": 10.12, "lift": 1.25}, {"driver": "bureau_dpd", "band": "1 no delinquency (12m)", "customers": 247602, "defaulters": 18507, "default_pct": 7.47, "lift": 0.93}, {"driver": "bureau_dpd", "band": "2 1-3 delinquent months", "customers": 11603, "defaulters": 1291, "default_pct": 11.13, "lift": 1.38}, {"driver": "bureau_dpd", "band": "3 4+ delinquent months", "customers": 4286, "defaulters": 570, "default_pct": 13.3, "lift": 1.65}, {"driver": "bureau_util", "band": "0 no bureau record", "customers": 44020, "defaulters": 4457, "default_pct": 10.12, "lift": 1.25}, {"driver": "bureau_util", "band": "1 no active debt", "customers": 49420, "defaulters": 2818, "default_pct": 5.7, "lift": 0.71}, {"driver": "bureau_util", "band": "2 utilisation <=30%", "customers": 62762, "defaulters": 3890, "default_pct": 6.2, "lift": 0.77}, {"driver": "bureau_util", "band": "3 utilisation 30-70%", "customers": 68642, "defaulters": 4849, "default_pct": 7.06, "lift": 0.87}, {"driver": "bureau_util", "band": "4 utilisation >70%", "customers": 82667, "defaulters": 8811, "default_pct": 10.66, "lift": 1.32}, {"driver": "cc_util", "band": "0 no credit card", "customers": 220606, "defaulters": 17291, "default_pct": 7.84, "lift": 0.97}, {"driver": "cc_util", "band": "1 card util <=30%", "customers": 46138, "defaulters": 2697, "default_pct": 5.85, "lift": 0.72}, {"driver": "cc_util", "band": "2 card util 30-70%", "customers": 24184, "defaulters": 2288, "default_pct": 9.46, "lift": 1.17}, {"driver": "cc_util", "band": "3 card util >70%", "customers": 16583, "defaulters": 2549, "default_pct": 15.37, "lift": 1.9}, {"driver": "late_last6", "band": "0 no history", "customers": 15868, "defaulters": 949, "default_pct": 5.98, "lift": 0.74}, {"driver": "late_last6", "band": "1 none of last 6 late", "customers": 221366, "defaulters": 15453, "default_pct": 6.98, "lift": 0.86}, {"driver": "late_last6", "band": "2 up to 1/3 late", "customers": 48684, "defaulters": 5448, "default_pct": 11.19, "lift": 1.39}, {"driver": "late_last6", "band": "3 over 1/3 late", "customers": 21593, "defaulters": 2975, "default_pct": 13.78, "lift": 1.71}, {"driver": "late_rate", "band": "0 no history", "customers": 15868, "defaulters": 949, "default_pct": 5.98, "lift": 0.74}, {"driver": "late_rate", "band": "1 never late", "customers": 136636, "defaulters": 9292, "default_pct": 6.8, "lift": 0.84}, {"driver": "late_rate", "band": "2 late <=5% of instalments", "customers": 39812, "defaulters": 2764, "default_pct": 6.94, "lift": 0.86}, {"driver": "late_rate", "band": "3 late 5-15%", "customers": 56162, "defaulters": 5103, "default_pct": 9.09, "lift": 1.13}, {"driver": "late_rate", "band": "4 late >15%", "customers": 59033, "defaulters": 6717, "default_pct": 11.38, "lift": 1.41}], "head": {"customers": 307511, "defaulters": 24825, "default_pct": 8.07, "recent_late_customers": 70241, "recent_late_defaulters": 8407, "flag_customers": 6115, "flag_defaulters": 881, "placeholder_n": 55374, "app_rows": 307511, "placeholder_default_pct": 5.4, "other_default_pct": 8.66, "dup_instalment_rows": 653483, "orphan_bb_rows": 3120184, "bb_rows": 27299925}};
+const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+const DRIVERS = [
+  { id: 'late_last6',  title: 'Recent lateness',         sub: 'Share of the last 6 instalments paid after the due date' },
+  { id: 'late_rate',   title: 'Lifetime lateness',       sub: 'Share of all past instalments paid after the due date' },
+  { id: 'bureau_dpd',  title: 'Bureau delinquency',      sub: 'Delinquent months in the last 12 months (credit bureau)' },
+  { id: 'bureau_util', title: 'Bureau utilisation',      sub: 'Debt as a share of credit on active bureau loans' },
+  { id: 'cc_util',     title: 'Credit-card utilisation', sub: 'Average card balance as a share of the limit' }
+];
+
+const fmt = n => Number(n).toLocaleString('en-US');
+const pct = (n, d = 2) => Number(n).toFixed(d) + '%';
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+function tile(label, value, note) {
+  const t = el('div', 'card tile');
+  t.append(el('div', 'label', label), el('div', 'value', value), el('div', 'note', note));
+  return t;
+}
+const rowsBy = id => DATA.bands
+  .filter(r => r.driver === id)
+  .sort((a, b) => a.band.localeCompare(b.band))
+  .map(r => ({ ...r, label: r.band.slice(2) }));   // band text starts with "<n> " for ordering
+
+function buildStatic() {
+  const h = DATA.head;
+  document.getElementById('subtitle').textContent =
+    fmt(h.customers) + ' customers, ' + fmt(h.defaulters) + ' defaults (' + pct(h.default_pct) + ' baseline).';
+
+  // Hero: best vs worst band of recent lateness
+  const none  = DATA.bands.find(r => r.driver === 'late_last6' && r.band.startsWith('1 '));
+  const worst = DATA.bands.find(r => r.driver === 'late_last6' && r.band.startsWith('3 '));
+  const hero = document.getElementById('hero');
+  if (none && worst) {
+    hero.append(
+      el('div', 'hero-fig', (worst.default_pct / none.default_pct).toFixed(1) + '×'),
+      el('p', '', 'Customers who paid more than a third of their last 6 instalments late default at ' +
+        pct(worst.default_pct) + ', against ' + pct(none.default_pct) +
+        ' for customers with none late. Late payments in the recent past are an early-warning sign.')
+    );
+  } else { hero.remove(); }
+
+  const tiles = document.getElementById('tiles');
+  tiles.append(
+    tile('Customers analysed', fmt(h.customers), 'One row per customer after joining 7 tables'),
+    tile('Portfolio default rate', pct(h.default_pct), fmt(h.defaulters) + ' defaulters'),
+    tile('Defaults with a recent late payment',
+         pct(100 * h.recent_late_defaulters / h.defaulters, 1),
+         'Any late payment in the last 6 instalments. These customers are ' +
+         pct(100 * h.recent_late_customers / h.customers, 1) + ' of the book.'),
+    tile('Defaults caught by the watchlist',
+         pct(100 * h.flag_defaulters / h.defaulters, 1),
+         'Recent late payment plus bureau delinquency: ' + pct(100 * h.flag_customers / h.customers, 1) +
+         ' of customers at a ' + pct(100 * h.flag_defaulters / h.flag_customers) + ' default rate.')
+  );
+
+  const charts = document.getElementById('charts');
+  DRIVERS.forEach(d => {
+    const rows = rowsBy(d.id);
+    const card = el('div', 'card chart');
+    card.append(el('h3', '', d.title), el('p', '', d.sub));
+    const plot = el('div'); plot.id = 'plot-' + d.id;
+    plot.style.height = (rows.length * 46 + 64) + 'px';
+    card.append(plot);
+    const det = el('details');
+    det.append(el('summary', '', 'View as table'));
+    const tbl = el('table');
+    const head = el('tr');
+    ['Band', 'Customers', 'Defaulters', 'Default rate', 'Lift'].forEach(c => head.append(el('th', '', c)));
+    tbl.append(head);
+    rows.forEach(r => {
+      const tr = el('tr');
+      [r.label, fmt(r.customers), fmt(r.defaulters), pct(r.default_pct), Number(r.lift).toFixed(2) + '×']
+        .forEach(v => tr.append(el('td', '', v)));
+      tbl.append(tr);
+    });
+    det.append(tbl);
+    card.append(det);
+    charts.append(card);
+  });
+
+  document.getElementById('dq').append(
+    tile('Placeholder value 365243 in DAYS_EMPLOYED', fmt(h.placeholder_n),
+         pct(100 * h.placeholder_n / h.app_rows, 1) + ' of customers; default rate ' + pct(h.placeholder_default_pct, 1) +
+         ' vs ' + pct(h.other_default_pct, 1) + ' for the rest. Flagged and set to NULL.'),
+    tile('Duplicate instalment rows', fmt(h.dup_instalment_rows),
+         'Partial payments repeat the instalment amount. Collapsed to one row per instalment before summing.'),
+    tile('Orphan bureau_balance rows', fmt(h.orphan_bb_rows),
+         pct(100 * h.orphan_bb_rows / h.bb_rows, 1) + ' of rows point to loans missing from bureau. Excluded and reconciled.')
+  );
+}
+
+function draw() {
+  const ink = css('--ink'), ink2 = css('--ink2'), muted = css('--muted');
+  const grid = css('--grid'), axis = css('--axis');
+  const accent = css('--accent'), below = css('--below'), surface = css('--surface');
+  const base = Number(DATA.head.default_pct);
+
+  DRIVERS.forEach(d => {
+    const rows = rowsBy(d.id);
+    const x = rows.map(r => Number(r.default_pct));
+    const trace = {
+      type: 'bar', orientation: 'h',
+      x: x, y: rows.map(r => r.label),
+      marker: { color: x.map(v => v > base ? accent : below), cornerradius: 4 },
+      customdata: rows.map(r => [r.customers, r.lift]),
+      hovertemplate: '<b>%{x:.2f}%</b> default rate<br>%{y}<br>%{customdata[0]:,} customers, lift %{customdata[1]:.2f}×<extra></extra>',
+      hoverlabel: { bgcolor: surface, bordercolor: axis, font: { color: ink, family: FONT, size: 13 } }
+    };
+    const layout = {
+      margin: { l: 8, r: 24, t: 30, b: 30 },
+      paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)',
+      font: { family: FONT, color: ink2 },
+      bargap: 0.5, showlegend: false,
+      xaxis: { range: [0, Math.max(...x, base) * 1.22], ticksuffix: '%', gridcolor: grid, gridwidth: 1,
+               zeroline: true, zerolinecolor: axis, zerolinewidth: 1, tickfont: { color: muted, size: 11 }, fixedrange: true },
+      yaxis: { autorange: 'reversed', automargin: true, tickfont: { color: ink2, size: 12 },
+               showgrid: false, ticks: '', fixedrange: true },
+      shapes: [{ type: 'line', xref: 'x', yref: 'paper', x0: base, x1: base, y0: 0, y1: 1, line: { color: ink2, width: 1.5 } }],
+      annotations: [{ xref: 'x', yref: 'paper', x: base, y: 1, yanchor: 'bottom', showarrow: false,
+                      text: 'Portfolio ' + base.toFixed(2) + '%', font: { color: ink2, size: 11 } }]
+        // Value labels at each bar tip. They sit on a surface-coloured box so the baseline line never runs through the digits.
+        .concat(rows.map((r, i) => ({
+          xref: 'x', yref: 'y', x: x[i], y: r.label, xanchor: 'left', xshift: 6, showarrow: false,
+          text: x[i].toFixed(2) + '%', font: { color: ink, size: 12, family: FONT },
+          bgcolor: surface, borderpad: 2
+        })))
+    };
+    Plotly.react('plot-' + d.id, [trace], layout, { displayModeBar: false, responsive: true });
+  });
+}
+
+buildStatic();
+draw();
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+</script>
+</body>
+</html>
